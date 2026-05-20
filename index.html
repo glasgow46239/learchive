@@ -1365,32 +1365,23 @@ function buildDataFromCSV(rows) {
 // ============================================================
 function buildHistoryFromCSV(rows) {
   // Returns { ward_code: [ {year, con, lab, ld, ref, grn, snp, pc, ind, oth}, … ] }
-  // Tolerates common column name variants (ref_pct vs reform_pct, ld_pct vs ldem_pct etc.)
-  function col(row, ...names) {
-    for (const n of names) {
-      const v = parseFloat(row[n]);
-      if (!isNaN(v) && v > 0) return v;
-    }
-    return null;
-  }
-
   const history = {};
   rows.forEach(row => {
-    const code = (row.ward_code || row.ward_id || '').trim();
-    const year = parseInt(row.year);
+    const code = row.ward_code;
+    const year = parseInt(row.year || row.yr);
     if (!code || !year) return;
     if (!history[code]) history[code] = [];
     history[code].push({
       year,
-      con: col(row, 'con_pct'),
-      lab: col(row, 'lab_pct'),
-      ld:  col(row, 'ld_pct', 'ldem_pct', 'ldm_pct'),
-      ref: col(row, 'ref_pct', 'reform_pct'),
-      grn: col(row, 'grn_pct', 'green_pct'),
-      snp: col(row, 'snp_pct'),
-      pc:  col(row, 'pc_pct'),
-      ind: col(row, 'ind_pct'),
-      oth: col(row, 'oth_pct', 'other_pct'),
+      con:  parseFloat(row.con_pct)    || null,
+      lab:  parseFloat(row.lab_pct)    || null,
+      ld:   parseFloat(row.ld_pct)     || null,
+      ref:  parseFloat(row.reform_pct) || null,
+      grn:  parseFloat(row.grn_pct)    || null,
+      snp:  parseFloat(row.snp_pct)    || null,
+      pc:   parseFloat(row.pc_pct)     || null,
+      ind:  parseFloat(row.ind_pct)    || null,
+      oth:  parseFloat(row.oth_pct)    || null,
     });
   });
   // Sort each ward's rows chronologically
@@ -2328,20 +2319,9 @@ async function bootstrap() {
     try {
       const res  = await fetch(HISTORY_CSV_URL);
       const text = await res.text();
-      const rows = parseCSV(text);
-      console.log('[History] CSV fetched. Row count:', rows.length);
-      if (rows.length > 0) {
-        console.log('[History] Columns found:', Object.keys(rows[0]).join(', '));
-        console.log('[History] First row:', JSON.stringify(rows[0]));
-      }
-      HISTORY = buildHistoryFromCSV(rows);
-      console.log('[History] Ward codes loaded:', Object.keys(HISTORY).length);
-      if (Object.keys(HISTORY).length > 0) {
-        const firstCode = Object.keys(HISTORY)[0];
-        console.log('[History] Sample ward', firstCode, ':', JSON.stringify(HISTORY[firstCode]));
-      }
+      HISTORY = buildHistoryFromCSV(parseCSV(text));
     } catch (err) {
-      console.warn('[History] CSV load failed:', err);
+      console.warn('History CSV load failed, history table disabled:', err);
     }
   }
 
