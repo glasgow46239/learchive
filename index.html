@@ -1623,9 +1623,10 @@ function buildPanelBody(d, HISTORY) {
         ${stackedBarHTML(d.curr, '')}
       </div>`;
 
-  console.log('[Panel] ward_code:', d.ward_code, '| HISTORY:', !!HISTORY, '| rows:', HISTORY && d.ward_code ? (HISTORY[d.ward_code] ? HISTORY[d.ward_code].length : 'NO MATCH') : 'n/a');
-  const historyHTML = HISTORY
-    ? buildHistoryTable(HISTORY[d.ward_code])
+  var historyRows = HISTORY ? HISTORY[d.ward_code] : null;
+  console.log('[Panel] code=' + d.ward_code + ' HISTORY=' + !!HISTORY + ' rows=' + (historyRows ? historyRows.length : 'none'));
+  const historyHTML = historyRows
+    ? buildHistoryTable(historyRows)
     : '';
 
   return `
