@@ -123,6 +123,8 @@
     .panel-body {
       padding: 10px 10px;
       overflow-y: auto;
+      flex: 1;
+      min-height: 0;
     }
 
     /* =========================================================
@@ -531,8 +533,14 @@
       border-top: 1px solid #f0f0f0;
     }
 
+    .history-table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .history-table {
-      width: 100%;
+      width: auto;
+      min-width: 100%;
       border-collapse: collapse;
       font-size: 11px;
       table-layout: auto;
@@ -584,6 +592,62 @@
     }
 
     .history-null { color: #ccc; }
+
+    /* =========================================================
+       DEMOGRAPHICS PANEL
+    ========================================================= */
+    .demo-section {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .demo-item {
+      background: #f8f8f7;
+      border-radius: 6px;
+      padding: 7px 9px;
+    }
+
+    .demo-label {
+      font-size: 10px;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    .demo-bar-track {
+      height: 4px;
+      background: #e8e8e8;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+
+    .demo-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: #aaa;
+    }
+
+    .demo-value {
+      font-size: 13px;
+      font-weight: 600;
+      color: #111;
+    }
+
+    .demo-nat {
+      font-size: 10px;
+      color: #bbb;
+      margin-left: 3px;
+    }
   </style>
 
   
@@ -719,7 +783,7 @@ const PARTIES = {
 // ============================================================
 // CONFIGURATION
 // ============================================================
-const SHEET_CSV_URL = null; // Data is derived from HISTORY_CSV_URL
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSQpaPKRyTqz_auQnsbPQVXlp1B46zNlpldZalvKaorksMJRhhg4tqsuPQbopBUn0rkYOL3-HfgEntB/pub?gid=0&single=true&output=csv';
 const GEOJSON_URL = 'wards.geojson';
 const GEOJSON_INLINE = null;
 const MAP_CENTER = [-0.12, 51.51];
@@ -1496,12 +1560,16 @@ function buildHistoryTable(wardRows) {
     return vb - va;
   });
 
+  // Reverse years so most recent is left-most
+  const displayYears = [...years].reverse();
+
   // Build table HTML
   let html = `<div class="history-section">
     <div class="stacked-label">Vote share by year</div>
+    <div class="history-table-scroll">
     <table class="history-table">
       <thead><tr><th>Party</th>`;
-  years.forEach(y => { html += `<th>${y}</th>`; });
+  displayYears.forEach(y => { html += `<th>${y}</th>`; });
   html += `</tr></thead><tbody>`;
 
   activeKeys.forEach(dkey => {
@@ -1511,7 +1579,7 @@ function buildHistoryTable(wardRows) {
       ${meta.label}
     </div></td>`;
 
-    years.forEach(y => {
+    displayYears.forEach(y => {
       const row = rowByYear[y];
       const v = getDisplayValue(row, dkey);
       const isWin = winners[y] === dkey;
@@ -1527,66 +1595,10 @@ function buildHistoryTable(wardRows) {
     html += `</tr>`;
   });
 
-  html += `</tbody></table></div>`;
+  html += `</tbody></table></div></div>`;
   return html;
 }
 
-
-// ============================================================
-// BUILD DATA FROM HISTORY CSV
-// Derives the DATA object (used for map colouring + panel header)
-// from the most recent year per ward in the history CSV rows.
-// ============================================================
-function buildDataFromHistory(rows) {
-  // Group rows by ward_code, find most recent year per ward
-  const byWard = {};
-  rows.forEach(row => {
-    const code = (row.ward_code || '').trim();
-    const year = parseInt(row.year || row.yr);
-    if (!code || !year) return;
-    if (!byWard[code] || year > byWard[code].year) {
-      byWard[code] = { year, row };
-    }
-  });
-
-  const PARTY_MAP = {
-    Con: parseFloat, Lab: parseFloat, LDem: parseFloat,
-    Grn: parseFloat, Ref: parseFloat, Ind: parseFloat, Oth: parseFloat,
-  };
-
-  const data = {};
-  Object.entries(byWard).forEach(([code, { row }]) => {
-    const curr = {
-      Con:  parseFloat(row.con_pct)    || 0,
-      Lab:  parseFloat(row.lab_pct)    || 0,
-      LDem: parseFloat(row.ld_pct)     || 0,
-      Grn:  parseFloat(row.grn_pct)    || 0,
-      Ref:  parseFloat(row.reform_pct) || 0,
-      Ind:  parseFloat(row.ind_pct)    || 0,
-      Oth:  parseFloat(row.oth_pct)    || 0,
-    };
-    const sorted = Object.entries(curr)
-      .filter(([, v]) => v > 0)
-      .sort((a, b) => b[1] - a[1]);
-    const winner = sorted[0]?.[0] || 'Ind';
-    data[code] = {
-      ward_code:   code,
-      ward_name:   row.ward_name || code,
-      council:     row.council   || '',
-      winner,
-      prev_winner: winner, // no prev data — suppresses result bar
-      is_new:      true,   // suppresses chg column in results table
-      curr,
-      prev:        {},
-      sorted,
-      swing:       0,
-      turnout:     0,
-      electorate:  0,
-      majority:    0,
-    };
-  });
-  return data;
-}
 
 function chgClass(v) {
   return v > 0 ? 'chg-pos' : v < 0 ? 'chg-neg' : 'chg-nil';
@@ -1645,12 +1657,96 @@ function buildPanelHeader(d) {
             <div class="council-name">${d.council}</div>`;
 }
 
+// ============================================================
+// DEMOGRAPHICS — optional per-ward data
+// DEMO_DATA keyed by ward_code:
+//   { white_pct, over55_pct, professional_pct, renting_pct }
+// Set to null to hide the section entirely.
+// ============================================================
+const DEMO_CSV_URL = null; // set to your demographics CSV URL when ready
+let DEMOGRAPHICS = null;   // populated in bootstrap if DEMO_CSV_URL is set
+
+// National averages for context bars (England & Wales 2021 Census)
+const DEMO_NATIONAL = {
+  white_pct:        81.7,
+  over55_pct:       34.2,
+  professional_pct: 31.4,
+  renting_pct:      35.2,
+};
+
+const DEMO_FIELDS = [
+  { key: 'white_pct',        label: 'White',        color: '#94a3b8' },
+  { key: 'over55_pct',       label: 'Over 55',      color: '#f59e0b' },
+  { key: 'professional_pct', label: 'Professional', color: '#6366f1' },
+  { key: 'renting_pct',      label: 'Renting',      color: '#10b981' },
+];
+
+function buildDemographicsHTML(wardCode) {
+  if (!DEMOGRAPHICS || !DEMOGRAPHICS[wardCode]) return '';
+  const d = DEMOGRAPHICS[wardCode];
+
+  let items = '';
+  DEMO_FIELDS.forEach(({ key, label, color }) => {
+    const val = d[key];
+    if (val == null) return;
+    const nat = DEMO_NATIONAL[key];
+    const pct = Math.min(val, 100);
+    items += `<div class="demo-item">
+      <div class="demo-label">${label}</div>
+      <div class="demo-bar-track">
+        <div class="demo-bar-fill" style="width:${pct}%;background:${color};"></div>
+      </div>
+      <div class="demo-value">${val.toFixed(1)}%<span class="demo-nat">nat. ${nat}%</span></div>
+    </div>`;
+  });
+
+  if (!items) return '';
+  return `<div class="demo-section">
+    <div class="stacked-label">Demographics (2021 Census)</div>
+    <div class="demo-grid">${items}</div>
+  </div>`;
+}
+
 function buildPanelBody(d, HISTORY) {
+  const max = d.sorted[0]?.[1] || 1;
+  const showChg = !d.is_new;
+  const tableRows = d.sorted
+    .map(([pt, s]) => {
+      const party = PARTIES[pt] || PARTIES.Ind;
+      const chg = s - (d.prev[pt] || 0);
+      const chgCell = showChg
+        ? `<td class="chg-cell ${chgClass(chg)}">${chgStr(chg)}</td>`
+        : '';
+      return `<tr>
+        <td><div class="party-cell">
+          <div class="party-stripe" style="background:${party.color};"></div>
+          <span class="party-name">${party.label}</span>
+        </div></td>
+        <td class="pct-cell">${s.toFixed(1)}</td>
+        <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((s / max) * 100).toFixed(1)}%;background:${party.color};"></div></div></td>
+        ${chgCell}
+      </tr>`;
+    })
+    .join('');
+
+  const chgHeader = showChg ? '<th>Chg.</th>' : '';
+  const stackedSection = showChg
+    ? `<div class="stacked-section">
+        <div class="stacked-label">Result vs. prev</div>
+        ${stackedBarHTML(d.curr, '')}
+        ${stackedBarHTML(d.prev, 'previous')}
+      </div>`
+    : `<div class="stacked-section">
+        <div class="stacked-label">Result</div>
+        ${stackedBarHTML(d.curr, '')}
+      </div>`;
+
   const historyRows = HISTORY ? HISTORY[d.ward_code] : null;
   const historyHTML = historyRows
     ? buildHistoryTable(historyRows)
     : '<p style="font-size:12px;color:#aaa;padding:8px 0;">No history data available.</p>';
-  return historyHTML;
+  const demoHTML = buildDemographicsHTML(d.ward_code);
+  return historyHTML + demoHTML;
 }
 
 function showSidePanel(wardCode, DATA, HISTORY) {
@@ -1660,8 +1756,7 @@ function showSidePanel(wardCode, DATA, HISTORY) {
   const inner = document.getElementById('panel-inner');
   inner.style.display = 'flex';
   inner.style.flexDirection = 'column';
-  // Hide result bar — no single-year result to display
-  document.querySelector('.result-bar').style.display = 'none';
+  updateResultBar(d);
   document.getElementById('panel-header').innerHTML = buildPanelHeader(d);
   document.getElementById('panel-body').innerHTML = buildPanelBody(d, HISTORY);
 }
@@ -2313,22 +2408,7 @@ async function bootstrap() {
     geojsonData = buildDemoGeoJSON();
   }
 
-  // Load history CSV — this is the single source of truth for all results.
-  // DATA (for map colouring) is derived from the most recent year per ward.
-  if (HISTORY_CSV_URL) {
-    try {
-      const res  = await fetch(HISTORY_CSV_URL);
-      const text = await res.text();
-      const rows = parseCSV(text);
-      console.log('[History] Loaded', rows.length, 'rows');
-      HISTORY = buildHistoryFromCSV(rows);
-      DATA    = buildDataFromHistory(rows);
-      console.log('[History] Wards:', Object.keys(DATA).length);
-    } catch (err) {
-      console.warn('History CSV load failed:', err);
-      DATA = buildDemoData();
-    }
-  } else if (SHEET_CSV_URL) {
+  if (SHEET_CSV_URL) {
     try {
       const res = await fetch(SHEET_CSV_URL);
       const text = await res.text();
@@ -2339,6 +2419,17 @@ async function bootstrap() {
     }
   } else {
     DATA = buildDemoData();
+  }
+
+  // Load history CSV if configured
+  if (HISTORY_CSV_URL) {
+    try {
+      const res  = await fetch(HISTORY_CSV_URL);
+      const text = await res.text();
+      HISTORY = buildHistoryFromCSV(parseCSV(text));
+    } catch (err) {
+      console.warn('History CSV load failed, history table disabled:', err);
+    }
   }
 
   // Fix 2: remove features with no matching result data
