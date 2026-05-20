@@ -1368,7 +1368,7 @@ function buildHistoryFromCSV(rows) {
   const history = {};
   rows.forEach(row => {
     const code = row.ward_code;
-    const year = parseInt(row.year || row.yr);
+    const year = parseInt(row.year);
     if (!code || !year) return;
     if (!history[code]) history[code] = [];
     history[code].push({
@@ -1623,6 +1623,7 @@ function buildPanelBody(d, HISTORY) {
         ${stackedBarHTML(d.curr, '')}
       </div>`;
 
+  console.log('[Panel] ward_code:', d.ward_code, '| HISTORY:', !!HISTORY, '| rows:', HISTORY && d.ward_code ? (HISTORY[d.ward_code] ? HISTORY[d.ward_code].length : 'NO MATCH') : 'n/a');
   const historyHTML = HISTORY
     ? buildHistoryTable(HISTORY[d.ward_code])
     : '';
