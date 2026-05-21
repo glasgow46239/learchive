@@ -756,6 +756,9 @@ const YEAR_PREVIOUS = '2022';
 // Set to null to disable the history table.
 const HISTORY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSQpaPKRyTqz_auQnsbPQVXlp1B46zNlpldZalvKaorksMJRhhg4tqsuPQbopBUn0rkYOL3-HfgEntB/pub?gid=0&single=true&output=csv';
 
+// Which year drives map colouring. Change to recolour by a different year.
+const COLOUR_YEAR = '2026';
+
 // Demographics CSV — set to your sheet URL when ready, or leave null to hide the section
 const DEMO_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSQpaPKRyTqz_auQnsbPQVXlp1B46zNlpldZalvKaorksMJRhhg4tqsuPQbopBUn0rkYOL3-HfgEntB/pub?gid=2042197568&single=true&output=csv';
 let DEMOGRAPHICS = null;
@@ -1396,7 +1399,7 @@ function buildHistoryFromCSV(rows) {
   const history = {};
   rows.forEach(row => {
     const code = row.ward_code;
-    const year = parseInt(row.year);
+    const year = parseInt((row.year || row.yr || '').toString().trim());
     if (!code || !year) return;
     if (!history[code]) history[code] = [];
     history[code].push({
@@ -1524,7 +1527,6 @@ function buildHistoryTable(wardRows) {
     return vb - va;
   });
 
-  // Most recent year left-most
   const displayYears = [...years].reverse();
 
   // Build table HTML
@@ -2307,6 +2309,43 @@ function initSearch(DATA, geojsonData, map, isWideFn, showSidePanelFn, showDrawe
 // ============================================================
 // BOOTSTRAP
 // ============================================================
+// ============================================================
+// BUILD DATA FROM HISTORY CSV
+// ============================================================
+function buildDataFromHistory(rows) {
+  const byWard = {};
+  rows.forEach(row => {
+    const code = (row.ward_code || '').trim();
+    if (!code) return;
+    if (!byWard[code]) byWard[code] = [];
+    byWard[code].push(row);
+  });
+  const data = {};
+  Object.entries(byWard).forEach(([code, wardRows]) => {
+    // Normalise year values before comparing
+    const normalYear = r => parseInt((r.year || r.yr || '').toString().trim());
+    let row = wardRows.find(r => normalYear(r) === parseInt(COLOUR_YEAR));
+    if (!row) row = wardRows.reduce((a, b) => normalYear(b) > normalYear(a) ? b : a);
+    const curr = {
+      Con:  parseFloat(row.con_pct)    || 0,
+      Lab:  parseFloat(row.lab_pct)    || 0,
+      LDem: parseFloat(row.ld_pct)     || 0,
+      Grn:  parseFloat(row.grn_pct)    || 0,
+      Ref:  parseFloat(row.reform_pct) || 0,
+      Ind:  parseFloat(row.ind_pct)    || 0,
+      Oth:  parseFloat(row.oth_pct)    || 0,
+    };
+    const sorted = Object.entries(curr).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
+    const winner = sorted[0]?.[0] || 'Ind';
+    data[code] = {
+      ward_code: code, ward_name: row.ward_name || code, council: row.council || '',
+      winner, prev_winner: winner, is_new: true,
+      curr, prev: {}, sorted, swing: 0, turnout: 0, electorate: 0, majority: 0,
+    };
+  });
+  return data;
+}
+
 async function bootstrap() {
   let DATA, geojsonData, HISTORY = null;
 
@@ -2324,8 +2363,20 @@ async function bootstrap() {
     geojsonData = buildDemoGeoJSON();
   }
 
-  // DATA is built from history CSV below; only use SHEET_CSV_URL as fallback
-  if (SHEET_CSV_URL) {
+  // History CSV is the single source of truth for DATA and HISTORY
+  if (HISTORY_CSV_URL) {
+    try {
+      const res  = await fetch(HISTORY_CSV_URL);
+      const text = await res.text();
+      const histRows = parseCSV(text);
+      console.log('[History] Rows:', histRows.length, '| Year values:', [...new Set(histRows.map(r => (r.year||r.yr||'').toString().trim()))].join(', '));
+      HISTORY = buildHistoryFromCSV(histRows);
+      DATA    = buildDataFromHistory(histRows);
+      console.log('[History] Wards built:', Object.keys(DATA).length);
+    } catch (err) {
+      console.error('[History] FAILED:', err.message || err);
+    }
+  } else if (SHEET_CSV_URL) {
     try {
       const res = await fetch(SHEET_CSV_URL);
       const text = await res.text();
@@ -2335,19 +2386,8 @@ async function bootstrap() {
     }
   }
 
-  // Load history CSV if configured
-  if (HISTORY_CSV_URL) {
-    try {
-      const res  = await fetch(HISTORY_CSV_URL);
-      const text = await res.text();
-      HISTORY = buildHistoryFromCSV(parseCSV(text));
-    } catch (err) {
-      console.warn('History CSV load failed, history table disabled:', err);
-    }
-  }
-
-  // Load demographics CSV
-  if (DEMO_CSV_URL) {
+  // Load demographics
+  if (typeof DEMO_CSV_URL !== 'undefined' && DEMO_CSV_URL) {
     try {
       const res  = await fetch(DEMO_CSV_URL);
       const text = await res.text();
@@ -2365,7 +2405,7 @@ async function bootstrap() {
       });
       console.log('[Demo] Loaded', Object.keys(DEMOGRAPHICS).length, 'wards');
     } catch (err) {
-      console.warn('[Demo] CSV load failed:', err);
+      console.warn('[Demo] Failed:', err);
     }
   }
 
