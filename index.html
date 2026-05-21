@@ -27,7 +27,7 @@
     #map {
       position: absolute;
       top: 0; left: 0; bottom: 0;
-      width: calc(100% - 280px);
+      width: calc(100% - 340px);
       transition: width 0.2s ease;
     }
 
@@ -40,7 +40,7 @@
     #side-panel {
       position: absolute;
       top: 0; right: 0;
-      width: 280px;
+      width: 340px;
       max-height: 100%;
       background: #ffffff;
       border-left: 1px solid #e5e5e5;
@@ -123,8 +123,6 @@
     .panel-body {
       padding: 10px 10px;
       overflow-y: auto;
-      flex: 1;
-      min-height: 0;
     }
 
     /* =========================================================
@@ -547,34 +545,47 @@
     }
 
     .history-table thead th {
-      font-size: 10px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: #aaa;
       font-weight: 400;
-      padding: 0 4px 6px;
+      padding: 0 6px 6px;
       text-align: right;
       white-space: nowrap;
+      min-width: 52px;
     }
 
     .history-table thead th:first-child {
       text-align: left;
       padding-left: 0;
+      min-width: 52px;
+      position: sticky;
+      left: 0;
+      background: #fff;
+      z-index: 1;
     }
 
     .history-table tbody tr { border-top: 1px solid #f5f5f5; }
 
     .history-table tbody td {
-      padding: 3px 4px;
+      padding: 4px 6px;
       text-align: right;
       font-variant-numeric: tabular-nums;
+      font-size: 13px;
       color: #111;
       white-space: nowrap;
+      min-width: 52px;
     }
 
     .history-table tbody td:first-child {
       text-align: left;
       padding-left: 0;
+      position: sticky;
+      left: 0;
+      background: #fff;
+      z-index: 1;
+      min-width: 52px;
     }
 
     .history-party-cell {
@@ -592,62 +603,6 @@
     }
 
     .history-null { color: #ccc; }
-
-    /* =========================================================
-       DEMOGRAPHICS PANEL
-    ========================================================= */
-    .demo-section {
-      margin-top: 14px;
-      padding-top: 12px;
-      border-top: 1px solid #f0f0f0;
-    }
-
-    .demo-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-      margin-top: 6px;
-    }
-
-    .demo-item {
-      background: #f8f8f7;
-      border-radius: 6px;
-      padding: 7px 9px;
-    }
-
-    .demo-label {
-      font-size: 10px;
-      color: #aaa;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 4px;
-    }
-
-    .demo-bar-track {
-      height: 4px;
-      background: #e8e8e8;
-      border-radius: 2px;
-      overflow: hidden;
-      margin-bottom: 4px;
-    }
-
-    .demo-bar-fill {
-      height: 100%;
-      border-radius: 2px;
-      background: #aaa;
-    }
-
-    .demo-value {
-      font-size: 13px;
-      font-weight: 600;
-      color: #111;
-    }
-
-    .demo-nat {
-      font-size: 10px;
-      color: #bbb;
-      margin-left: 3px;
-    }
   </style>
 
   
@@ -695,13 +650,7 @@
       <span>Hover a ward to see its result</span>
     </div>
     <div id="panel-inner" style="display:none;">
-      <!-- FIX 3: result bar — incumbent stripe left, winner fill right -->
-      <div class="result-bar">
-        <div class="result-bar-incumbent" id="result-bar-incumbent"></div>
-        <div class="result-bar-fill" id="result-bar-fill">
-          <span class="result-bar-text" id="result-bar-text"></span>
-        </div>
-      </div>
+
       <div class="panel-header" id="panel-header"></div>
       <div class="panel-body" id="panel-body"></div>
     </div>
@@ -788,8 +737,12 @@ const GEOJSON_URL = 'wards.geojson';
 const GEOJSON_INLINE = null;
 const MAP_CENTER = [-0.12, 51.51];
 const MAP_ZOOM = 10;
-const YEAR_CURRENT = '2026';
+const YEAR_CURRENT  = '2026';
 const YEAR_PREVIOUS = '2022';
+
+// Which year drives the map choropleth colouring.
+// Set this to whichever year you want displayed on the map.
+const COLOUR_YEAR = '2026';
 
 // URL for the flat history CSV (ward_id, year, con_pct, lab_pct, ld_pct,
 // reform_pct, grn_pct, snp_pct, pc_pct, ind_pct, oth_pct).
@@ -1560,7 +1513,7 @@ function buildHistoryTable(wardRows) {
     return vb - va;
   });
 
-  // Reverse years so most recent is left-most
+  // Most recent year left-most
   const displayYears = [...years].reverse();
 
   // Build table HTML
@@ -1657,56 +1610,6 @@ function buildPanelHeader(d) {
             <div class="council-name">${d.council}</div>`;
 }
 
-// ============================================================
-// DEMOGRAPHICS — optional per-ward data
-// DEMO_DATA keyed by ward_code:
-//   { white_pct, over55_pct, professional_pct, renting_pct }
-// Set to null to hide the section entirely.
-// ============================================================
-const DEMO_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSQpaPKRyTqz_auQnsbPQVXlp1B46zNlpldZalvKaorksMJRhhg4tqsuPQbopBUn0rkYOL3-HfgEntB/pub?gid=2042197568&single=true&output=csv';
-let DEMOGRAPHICS = null;   // populated in bootstrap if DEMO_CSV_URL is set
-
-// National averages for context bars (England & Wales 2021 Census)
-const DEMO_NATIONAL = {
-  white_pct:        81.7,
-  over55_pct:       34.2,
-  professional_pct: 31.4,
-  renting_pct:      35.2,
-};
-
-const DEMO_FIELDS = [
-  { key: 'white_pct',        label: 'White',        color: '#94a3b8' },
-  { key: 'over55_pct',       label: 'Over 55',      color: '#f59e0b' },
-  { key: 'professional_pct', label: 'Professional', color: '#6366f1' },
-  { key: 'renting_pct',      label: 'Renting',      color: '#10b981' },
-];
-
-function buildDemographicsHTML(wardCode) {
-  if (!DEMOGRAPHICS || !DEMOGRAPHICS[wardCode]) return '';
-  const d = DEMOGRAPHICS[wardCode];
-
-  let items = '';
-  DEMO_FIELDS.forEach(({ key, label, color }) => {
-    const val = d[key];
-    if (val == null) return;
-    const nat = DEMO_NATIONAL[key];
-    const pct = Math.min(val, 100);
-    items += `<div class="demo-item">
-      <div class="demo-label">${label}</div>
-      <div class="demo-bar-track">
-        <div class="demo-bar-fill" style="width:${pct}%;background:${color};"></div>
-      </div>
-      <div class="demo-value">${val.toFixed(1)}%<span class="demo-nat">nat. ${nat}%</span></div>
-    </div>`;
-  });
-
-  if (!items) return '';
-  return `<div class="demo-section">
-    <div class="stacked-label">Demographics (2021 Census)</div>
-    <div class="demo-grid">${items}</div>
-  </div>`;
-}
-
 function buildPanelBody(d, HISTORY) {
   const max = d.sorted[0]?.[1] || 1;
   const showChg = !d.is_new;
@@ -1741,12 +1644,25 @@ function buildPanelBody(d, HISTORY) {
         ${stackedBarHTML(d.curr, '')}
       </div>`;
 
-  const historyRows = HISTORY ? HISTORY[d.ward_code] : null;
+  var historyRows = HISTORY ? HISTORY[d.ward_code] : null;
+  console.log('[Panel] code=' + d.ward_code + ' HISTORY=' + !!HISTORY + ' rows=' + (historyRows ? historyRows.length : 'none'));
   const historyHTML = historyRows
     ? buildHistoryTable(historyRows)
-    : '<p style="font-size:12px;color:#aaa;padding:8px 0;">No history data available.</p>';
-  const demoHTML = buildDemographicsHTML(d.ward_code);
-  return historyHTML + demoHTML;
+    : '';
+
+  return `
+      ${stackedSection}
+      <table class="results-table">
+        <thead><tr><th>Party</th><th>Pct.</th><th></th>${chgHeader}</tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-label">Turnout</div><div class="stat-value">${parseFloat(d.turnout).toFixed(1)}%</div></div>
+        <div class="stat-box"><div class="stat-label">Electorate</div><div class="stat-value">${Number(d.electorate).toLocaleString()}</div></div>
+        <div class="stat-box"><div class="stat-label">Majority</div><div class="stat-value">${Number(d.majority).toLocaleString()}</div></div>
+        <div class="stat-box"><div class="stat-label">Swing</div><div class="stat-value ${chgClass(d.swing)}">${chgStr(d.swing)}%</div></div>
+      </div>
+      ${historyHTML}`;
 }
 
 function showSidePanel(wardCode, DATA, HISTORY) {
@@ -1756,7 +1672,6 @@ function showSidePanel(wardCode, DATA, HISTORY) {
   const inner = document.getElementById('panel-inner');
   inner.style.display = 'flex';
   inner.style.flexDirection = 'column';
-  updateResultBar(d);
   document.getElementById('panel-header').innerHTML = buildPanelHeader(d);
   document.getElementById('panel-body').innerHTML = buildPanelBody(d, HISTORY);
 }
@@ -1977,7 +1892,7 @@ function initMap(geojsonData, DATA, HISTORY) {
   function applyLayout(wide) {
     isWide = wide;
     if (wide) {
-      document.getElementById('map').style.width = 'calc(100% - 280px)';
+      document.getElementById('map').style.width = 'calc(100% - 340px)';
       sidePanel.style.display = 'flex';
       sidePanel.classList.add('is-visible');
       drawer.classList.remove('drawer-enabled');
@@ -2391,6 +2306,63 @@ function initSearch(DATA, geojsonData, map, isWideFn, showSidePanelFn, showDrawe
 // ============================================================
 // BOOTSTRAP
 // ============================================================
+// ============================================================
+// BUILD DATA FROM HISTORY CSV
+// Derives the DATA object (map colouring + panel header)
+// from the year matching COLOUR_YEAR, falling back to the
+// most recent year if COLOUR_YEAR has no data for a ward.
+// ============================================================
+function buildDataFromHistory(rows) {
+  // Group all rows by ward_code
+  const byWard = {};
+  rows.forEach(row => {
+    const code = (row.ward_code || '').trim();
+    if (!code) return;
+    if (!byWard[code]) byWard[code] = [];
+    byWard[code].push(row);
+  });
+
+  const data = {};
+  Object.entries(byWard).forEach(([code, wardRows]) => {
+    // Pick the COLOUR_YEAR row, fall back to most recent
+    let row = wardRows.find(r => String(r.year || r.yr).trim() === String(COLOUR_YEAR));
+    if (!row) {
+      row = wardRows.reduce((a, b) =>
+        parseInt(b.year || b.yr) > parseInt(a.year || a.yr) ? b : a
+      );
+    }
+    const curr = {
+      Con:  parseFloat(row.con_pct)    || 0,
+      Lab:  parseFloat(row.lab_pct)    || 0,
+      LDem: parseFloat(row.ld_pct)     || 0,
+      Grn:  parseFloat(row.grn_pct)    || 0,
+      Ref:  parseFloat(row.reform_pct) || 0,
+      Ind:  parseFloat(row.ind_pct)    || 0,
+      Oth:  parseFloat(row.oth_pct)    || 0,
+    };
+    const sorted = Object.entries(curr)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1]);
+    const winner = sorted[0]?.[0] || 'Ind';
+    data[code] = {
+      ward_code:   code,
+      ward_name:   row.ward_name || code,
+      council:     row.council   || '',
+      winner,
+      prev_winner: winner,
+      is_new:      true,
+      curr,
+      prev:        {},
+      sorted,
+      swing:       0,
+      turnout:     0,
+      electorate:  0,
+      majority:    0,
+    };
+  });
+  return data;
+}
+
 async function bootstrap() {
   let DATA, geojsonData, HISTORY = null;
 
@@ -2408,7 +2380,22 @@ async function bootstrap() {
     geojsonData = buildDemoGeoJSON();
   }
 
-  if (SHEET_CSV_URL) {
+  // History CSV is the single source of truth.
+  // DATA (map colouring) is derived from COLOUR_YEAR rows.
+  if (HISTORY_CSV_URL) {
+    try {
+      const res  = await fetch(HISTORY_CSV_URL);
+      const text = await res.text();
+      const rows = parseCSV(text);
+      console.log('[History] Loaded', rows.length, 'rows');
+      HISTORY = buildHistoryFromCSV(rows);
+      DATA    = buildDataFromHistory(rows);
+      console.log('[History] Wards:', Object.keys(DATA).length);
+    } catch (err) {
+      console.warn('[History] CSV load failed, using demo:', err);
+      DATA = buildDemoData();
+    }
+  } else if (SHEET_CSV_URL) {
     try {
       const res = await fetch(SHEET_CSV_URL);
       const text = await res.text();
@@ -2420,27 +2407,6 @@ async function bootstrap() {
   } else {
     DATA = buildDemoData();
   }
-
-  // Load history CSV if configured
-  if (HISTORY_CSV_URL) {
-    try {
-      const res  = await fetch(HISTORY_CSV_URL);
-      const text = await res.text();
-      HISTORY = buildHistoryFromCSV(parseCSV(text));
-    } catch (err) {
-      console.warn('History CSV load failed, history table disabled:', err);
-    }
-  }
-
-  // Fix 2: remove features with no matching result data
-  // This hides Scottish wards, uncontested seats, etc.
-  geojsonData = {
-    ...geojsonData,
-    features: geojsonData.features.filter((f) => {
-      const code = f.properties?.ward_code;
-      return code && DATA[code];
-    }),
-  };
 
   // Load demographics CSV if configured
   if (DEMO_CSV_URL) {
@@ -2464,6 +2430,16 @@ async function bootstrap() {
       console.warn('[Demo] CSV load failed:', err);
     }
   }
+
+  // Fix 2: remove features with no matching result data
+  // This hides Scottish wards, uncontested seats, etc.
+  geojsonData = {
+    ...geojsonData,
+    features: geojsonData.features.filter((f) => {
+      const code = f.properties?.ward_code;
+      return code && DATA[code];
+    }),
+  };
 
   initMap(geojsonData, DATA, HISTORY);
 }
