@@ -11,7 +11,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Roboto', Helvetica, Arial, sans-serif;
+      font-family: var(--be-font, 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif);
       background: #f5f5f5;
     }
 
@@ -614,6 +614,8 @@
   </style>
 
   
+  <link rel="stylesheet" href="https://glasgow46239.github.io/style/be.css">
+  <link rel="stylesheet" href="https://glasgow46239.github.io/style/be-map.css">
 </head>
 <body>
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
@@ -1449,6 +1451,12 @@ function getHistoryRowValue(row, key) {
   return row[key];
 }
 
+// Solid tint (party colour over white) so the sticky latest-year column stays opaque
+function hexMixWhite(hex, alpha) {
+  const c = [1, 3, 5].map(i => Math.round(255 - (255 - parseInt(hex.slice(i, i + 2), 16)) * alpha));
+  return `rgb(${c.join(',')})`;
+}
+
 function hexToRgbaHistory(hex, alpha) {
   const r = parseInt(hex.slice(1,3),16);
   const g = parseInt(hex.slice(3,5),16);
@@ -1548,7 +1556,7 @@ function buildHistoryTable(wardRows) {
       const row = rowByYear[y];
       const v = getDisplayValue(row, dkey);
       const isWin = winners[y] === dkey;
-      const bg = isWin ? `background:${hexToRgbaHistory(meta.color, 0.13)};` : '';
+      const bg = isWin ? `background:${hexMixWhite(meta.color, 0.3)};` : '';
       const fw = isWin ? 'font-weight:600;' : '';
 
       if (v == null || v === 0) {
@@ -1605,16 +1613,9 @@ function stackedBarHTML(shares, cls) {
 
 // FIX 3: update the result bar strip at top of panel
 function updateResultBar(d) {
-  const winner = PARTIES[d.winner] || PARTIES.Ind;
-  const incumbent = PARTIES[d.prev_winner] || winner;
-  const held = d.winner === d.prev_winner;
-  const label = held
-    ? `${winner.label} hold`
-    : `${winner.label} gain from ${incumbent.label}`;
-  document.getElementById('result-bar-incumbent').style.background =
-    incumbent.color;
-  document.getElementById('result-bar-fill').style.background = winner.color;
-  document.getElementById('result-bar-text').textContent = label;
+  // House result line and top rule (glasgow46239.github.io/style): '■ GRN GAIN FROM ■ LAB'
+  const names = {}; Object.keys(PARTIES).forEach(k => { names[k] = PARTIES[k].label; });
+  BE.setResult(document.getElementById('side-panel'), d.winner || 'Ind', d.prev_winner || d.winner || 'Ind', names);
 }
 
 function buildPanelHeader(d) {
@@ -1676,6 +1677,8 @@ function showSidePanel(wardCode, DATA, HISTORY) {
   inner.style.flexDirection = 'column';
   document.getElementById('panel-header').innerHTML = buildPanelHeader(d);
   document.getElementById('panel-body').innerHTML = buildPanelBody(d, HISTORY);
+  // Top rule in the latest winner's colour (house map panel style)
+  BE.setResult(document.getElementById('side-panel'), d.winner || 'Ind', null);
 }
 
 let drawerExpanded = false;
