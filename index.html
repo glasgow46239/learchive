@@ -708,32 +708,34 @@
   Tiles by <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a>
 </p>
 
+  <script src="https://glasgow46239.github.io/style/be.js"></script>
+
   <script>
     // ============================================================
 // PARTY DEFINITIONS
 // ============================================================
 const PARTIES = {
-  Lab: { label: 'Labour', color: '#D34C4C', bg: '#D34C4C', text: '#8c001e' },
+  Lab: { label: 'Labour', color: BE.fill('Lab'), bg: BE.fill('Lab'), text: BE.text('Lab') },
   Con: {
     label: 'Conservative',
-    color: '#05718F',
-    bg: '#05718F',
-    text: '#004d82',
+    color: BE.fill('Con'),
+    bg: BE.fill('Con'),
+    text: BE.text('Con'),
   },
-  LDem: { label: 'Lib Dem', color: '#EBB82F', bg: '#EBB82F', text: '#7a4d00' },
-  Grn: { label: 'Green', color: '#5CBC4A', bg: '#5CBC4A', text: '#015c30' },
-  Ref: { label: 'Reform', color: '#15B6C2', bg: '#15B6C2', text: '#076373' },
+  LDem: { label: 'Lib Dem', color: BE.fill('LDem'), bg: BE.fill('LDem'), text: BE.text('LDem') },
+  Grn: { label: 'Green', color: BE.fill('Grn'), bg: BE.fill('Grn'), text: BE.text('Grn') },
+  Ref: { label: 'Reform', color: BE.fill('Ref'), bg: BE.fill('Ref'), text: BE.text('Ref') },
   Ind: {
     label: 'Independent',
-    color: '#CCA7C6',
-    bg: '#CCA7C6',
-    text: '#444441',
+    color: BE.fill('Ind'),
+    bg: BE.fill('Ind'),
+    text: BE.text('Ind'),
   },
   Oth: {
     label: 'Other',
-    color: '#BBBBBB',
-    bg: '#BBBBBB',
-    text: '#444441',
+    color: BE.fill('Oth'),
+    bg: BE.fill('Oth'),
+    text: BE.text('Oth'),
   },
 };
 
@@ -1422,15 +1424,15 @@ const HISTORY_KEYS = ['con','lab','ld','ref','grn','snp','pc','ind','oth'];
 
 // Map history key → party colour and base label
 const HISTORY_PARTY_META = {
-  con: { color: '#05718F',  label: 'Con'  },
-  lab: { color: '#D34C4C',  label: 'Lab'  },
-  ld:  { color: '#EBB82F',  label: 'LDem' },
-  ref: { color: '#15B6C2',  label: 'Ref'  },
-  grn: { color: '#5CBC4A',  label: 'Grn'  },
-  snp: { color: '#005EB8',  label: 'SNP'  },
-  pc:  { color: '#005EB8',  label: 'PC'   },
-  ind: { color: '#CCA7C6',  label: 'Ind'  },
-  oth: { color: '#BBBBBB',  label: 'Oth'  },
+  con: { color: BE.fill('con'),  label: 'Con'  },
+  lab: { color: BE.fill('lab'),  label: 'Lab'  },
+  ld: { color: BE.fill('ld'),  label: 'LDem' },
+  ref: { color: BE.fill('ref'),  label: 'Ref'  },
+  grn: { color: BE.fill('grn'),  label: 'Grn'  },
+  snp: { color: BE.fill('snp'),  label: 'SNP'  },
+  pc: { color: BE.fill('pc'),  label: 'PC'   },
+  ind: { color: BE.fill('ind'),  label: 'Ind'  },
+  oth: { color: BE.fill('oth'),  label: 'Oth'  },
 };
 
 function getNatKey(wardRows) {
