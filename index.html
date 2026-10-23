@@ -711,6 +711,7 @@
 </p>
 
   <script src="https://glasgow46239.github.io/style/be.js"></script>
+  <script src="https://glasgow46239.github.io/style/be-basemap.js"></script>
 
   <script>
     // ============================================================
@@ -1754,110 +1755,23 @@ function buildMapStyle(geojsonData, DATA) {
   });
   colorMatch.push('#cccccc');
 
-  // ── Base map style ──────────────────────────────────────────
-  // Colours taken from your Maputnik design.
-  // All source-layers use OpenFreeMap's schema.
-  return {
-    version: 8,
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-    sources: {
-      basemap: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
-      wards:   { type: 'geojson', data: geojsonData, generateId: true },
-    },
+  // House base map (glasgow46239.github.io/style/be-basemap.js) beneath the ward layers, labels on top
+  return BE.basemap.style({
+    sources: { wards: { type: 'geojson', data: geojsonData, generateId: true } },
     layers: [
-
-      // Background land
-      { id: 'bg', type: 'background',
-        paint: { 'background-color': 'rgba(245, 242, 232, 1)' } },
-
-      // Water
-      { id: 'water', type: 'fill', source: 'basemap', 'source-layer': 'water',
-        paint: { 'fill-color': 'hsl(205, 56%, 73%)', 'fill-opacity': 0.9 } },
-
-      // Green spaces — grass, parks, wood, cemetery
-      { id: 'landcover-green', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
-        filter: ['in', ['get', 'class'], ['literal', ['park','grass','cemetery','forest','meadow','nature_reserve']]],
-        paint: { 'fill-color': 'hsl(82, 46%, 72%)', 'fill-opacity': 0.5 } },
-
-      // Residential landuse tint
-      { id: 'landuse-residential', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
-        filter: ['in', ['get', 'class'], ['literal', ['residential','suburb','neighbourhood']]],
-        paint: { 'fill-color': 'rgba(222, 211, 190, 1)', 'fill-opacity': 0.45 } },
-
-      // Roads — five tiers, muted warm palette
-      { id: 'road-path', type: 'line', source: 'basemap', 'source-layer': 'transportation',
-        filter: ['in', ['get', 'class'], ['literal', ['path','track','service']]],
-        paint: { 'line-color': 'rgba(200,195,185,1)',
-          'line-width': ['interpolate',['linear'],['zoom'], 13,0.4, 17,1.2] } },
-
-      { id: 'road-minor', type: 'line', source: 'basemap', 'source-layer': 'transportation',
-        filter: ['in', ['get', 'class'], ['literal', ['minor','residential']]],
-        paint: { 'line-color': 'rgba(210,205,192,1)',
-          'line-width': ['interpolate',['linear'],['zoom'], 11,0.4, 15,2] } },
-
-      { id: 'road-secondary', type: 'line', source: 'basemap', 'source-layer': 'transportation',
-        filter: ['in', ['get', 'class'], ['literal', ['secondary','tertiary']]],
-        paint: { 'line-color': 'rgba(200,193,178,1)',
-          'line-width': ['interpolate',['linear'],['zoom'], 9,0.5, 14,3] } },
-
-      { id: 'road-primary', type: 'line', source: 'basemap', 'source-layer': 'transportation',
-        filter: ['in', ['get', 'class'], ['literal', ['primary']]],
-        paint: { 'line-color': 'rgba(188,178,160,1)',
-          'line-width': ['interpolate',['linear'],['zoom'], 8,0.8, 14,4] } },
-
-      { id: 'road-motorway', type: 'line', source: 'basemap', 'source-layer': 'transportation',
-        filter: ['in', ['get', 'class'], ['literal', ['motorway','trunk']]],
-        paint: { 'line-color': 'rgba(175,165,145,1)',
-          'line-width': ['interpolate',['linear'],['zoom'], 6,1, 14,5] } },
-
-      // Railway
-      { id: 'railway', type: 'line', source: 'basemap', 'source-layer': 'transportation',
-        filter: ['==', ['get', 'class'], 'rail'],
-        paint: { 'line-color': 'hsl(34,12%,66%)', 'line-width': 1, 'line-opacity': 0.7 } },
-
-      // Buildings — appear from zoom 12
-      { id: 'buildings', type: 'fill', source: 'basemap', 'source-layer': 'building',
-        minzoom: 12,
-        paint: { 'fill-color': 'rgba(185, 176, 169, 1)', 'fill-opacity': 0.9,
-          'fill-outline-color': 'rgba(165,156,148,1)' } },
-
-      // Ward fills — election results
+      // Ward fills: 66%, dropping to 33% on the clicked ward so its streets show through
       { id: 'wards-fill', type: 'fill', source: 'wards',
-        paint: { 'fill-color': colorMatch, 'fill-opacity': 0.6 } },
-
-      { id: 'wards-line', type: 'line', source: 'wards',
-        paint: { 'line-color': '#000000', 'line-width': 0.8, 'line-opacity': 0.4 } },
-
+        paint: { 'fill-color': colorMatch, 'fill-opacity': BE.basemap.fillOpacity() } },
+      { id: 'wards-line', type: 'line', source: 'wards', paint: BE.basemap.boundary() },
       // Hover highlight
       { id: 'wards-hover', type: 'fill', source: 'wards',
         paint: {
           'fill-color': colorMatch,
           'fill-opacity': ['case', ['boolean', ['feature-state','hover'], false], 0.25, 0],
         } },
-
-      // Pinned ward outline
-      { id: 'wards-pinned', type: 'line', source: 'wards',
-        paint: {
-          'line-color': '#111111', 'line-width': 1.5,
-          'line-opacity': ['case', ['boolean', ['feature-state','pinned'], false], 1, 0],
-        } },
-
-      // Place labels — on top of everything
-      { id: 'place-labels', type: 'symbol', source: 'basemap', 'source-layer': 'place',
-        filter: ['in', ['get', 'class'], ['literal', ['city','town','suburb','village']]],
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-font': ['Noto Sans Regular'],
-          'text-size': ['interpolate',['linear'],['zoom'], 9,10, 13,14],
-          'text-anchor': 'center', 'text-max-width': 8,
-        },
-        paint: {
-          'text-color': 'hsl(0,0%,25%)',
-          'text-halo-color': 'hsla(0,0%,100%,0.85)',
-          'text-halo-width': 2,
-        } },
+      { id: 'wards-pinned', type: 'line', source: 'wards', paint: BE.basemap.pinnedLine() },
     ],
-  };
+  });
 }
 
 // ============================================================
@@ -1885,10 +1799,52 @@ function initMap(geojsonData, DATA, HISTORY) {
     pinnedId = null;
     pinnedCode = null;
     pinEl.classList.remove('active');
+    sidePanel.classList.remove('bm-pinned');
   }
 
   // Clicking the pin chip unpins
   pinEl.addEventListener('click', unpin);
+
+  // Click reveal tools: magnifier (zoom to the ward) and close, plus Escape
+  function closeResult() {
+    unpin();
+    sidePanel.classList.remove('be-has-result');
+    document.getElementById('panel-placeholder').style.display = ''; document.getElementById('panel-inner').style.display = 'none';
+    if (typeof dismissDrawer === 'function') dismissDrawer();
+  }
+  function pinWard(code) {
+    const map = window._electionMap;
+    const fid = geojsonData.features.findIndex((f) => f.properties && f.properties.ward_code === code);
+    if (!map || fid < 0) return;
+    if (pinnedId !== null) map.setFeatureState({ source: 'wards', id: pinnedId }, { pinned: false });
+    if (hoveredId !== null) { map.setFeatureState({ source: 'wards', id: hoveredId }, { hover: false }); hoveredId = null; }
+    pinnedId = fid; pinnedCode = code;
+    map.setFeatureState({ source: 'wards', id: fid }, { pinned: true });
+    const d = DATA[code];
+    if (isWide && d) {
+      const p = PARTIES[d.winner] || PARTIES.Ind;
+      document.getElementById('pin-dot').style.background = p.color;
+      document.getElementById('pin-name').textContent = d.ward_name;
+      pinEl.classList.add('active');
+      sidePanel.classList.add('bm-pinned');
+    }
+  }
+  window.__bmPinWard = pinWard;
+  function zoomToWard() {
+    const f = pinnedCode && geojsonData.features.find((x) => x.properties && x.properties.ward_code === pinnedCode);
+    const b = BE.basemap.bounds(f);
+    if (!b || !window._electionMap) return;
+    const right = isWide ? sidePanel.getBoundingClientRect().width + 30 : 30;
+    window._electionMap.fitBounds(b, { padding: { top: 40, bottom: isWide ? 40 : 160, left: 40, right }, maxZoom: 15, duration: 900 });
+  }
+  BE.basemap.panelTools({
+    panel: sidePanel,
+    drawerSlot: document.getElementById('drawer-peek-fill'),
+    zoomLabel: 'Zoom to this ward',
+    onZoom: zoomToWard,
+    onClose: closeResult,
+  });
+
 
   // FIX 1 & 2: layout applied before map renders — no flash
   function applyLayout(wide) {
@@ -2043,7 +1999,11 @@ function initMap(geojsonData, DATA, HISTORY) {
           document.getElementById('pin-name').textContent = d.ward_name;
           pinEl.classList.add('active');
         }
+        sidePanel.classList.add('bm-pinned');
       } else {
+        if (pinnedId !== null) map.setFeatureState({ source: 'wards', id: pinnedId }, { pinned: false });
+        pinnedId = fid; pinnedCode = code;
+        map.setFeatureState({ source: 'wards', id: pinnedId }, { pinned: true });
         showDrawer(code, DATA, HISTORY);
       }
     });
@@ -2161,7 +2121,7 @@ function initChoropleth(map, DATA) {
 
     if (mode === 'winner') {
       map.setPaintProperty('wards-fill', 'fill-color', getWinnerExpression());
-      map.setPaintProperty('wards-fill', 'fill-opacity', 0.55);
+      map.setPaintProperty('wards-fill', 'fill-opacity', BE.basemap.fillOpacity());
       // restore hover layer to winner colours too
       map.setPaintProperty('wards-hover', 'fill-color', getWinnerExpression());
       partyWrap.classList.remove('visible');
@@ -2170,7 +2130,7 @@ function initChoropleth(map, DATA) {
       const ceiling = CHOROPLETH_CEILINGS[party] || CHOROPLETH_DEFAULT_CEILING;
       const expr    = buildChoroplethExpression(DATA, party, ceiling);
       map.setPaintProperty('wards-fill',  'fill-color',   expr);
-      map.setPaintProperty('wards-fill',  'fill-opacity', 0.85);
+      map.setPaintProperty('wards-fill',  'fill-opacity', BE.basemap.fillOpacity(0.85));
       map.setPaintProperty('wards-hover', 'fill-color',   expr);
       partyWrap.classList.add('visible');
 
@@ -2251,6 +2211,7 @@ function initSearch(DATA, geojsonData, map, isWideFn, showSidePanelFn, showDrawe
     } else {
       showDrawerFn(entry.code, DATA);
     }
+    if (window.__bmPinWard) window.__bmPinWard(entry.code); // search pins like a click
   }
 
   input.addEventListener('input', () => {
