@@ -31,6 +31,20 @@
       transition: width 0.2s ease;
     }
 
+    /* Shown over the base map until the results arrive */
+    #map-loading {
+      position: absolute;
+      top: 10px; left: 52px; /* beside the zoom buttons */
+      z-index: 5;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 3px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+      font: 500 13px 'IBM Plex Sans', sans-serif;
+      color: #333;
+      pointer-events: none;
+    }
+
     /* =========================================================
        SIDE PANEL
        FIX 1: visibility:hidden by default — no flash on mobile.
@@ -612,6 +626,7 @@
 
 <div id="map-container" data-be-layout="sidebar" data-be-width="wide">
   <div id="map"></div>
+  <div id="map-loading" role="status">Loading results…</div>
 
   <!-- SIDE PANEL -->
   <div id="side-panel">
@@ -1698,22 +1713,48 @@ document.getElementById('drawer-handle').addEventListener('click', () => {
 // injects the ward data sources and layers on top.
 //
 // IMPORTANT: place style.json in the same folder as index.html.
-// The ward layers (wards-fill, wards-line, wards-hover,
-// wards-pinned) are appended last so they sit above the base map.
+// The ward layers (wards-fill, wards-line, wards-pinned)
+// are appended last so they sit above the base map.
 // ============================================================
-function buildMapStyle(DATA) {
-
-  // Build the winner colour-match expression
-  const colorMatch = ['match', ['get', 'ward_code']];
+// Winner colour for every ward with results
+function winnerColourExpr(DATA) {
+  const expr = ['match', ['get', 'ward_code']];
   Object.entries(DATA).forEach(([code, d]) => {
-    colorMatch.push(code, PARTIES[d.winner]?.color || '#888780');
+    expr.push(code, PARTIES[d.winner]?.color || '#888780');
   });
-  colorMatch.push('#cccccc');
+  expr.push('#cccccc');
+  return expr.length > 3 ? expr : '#cccccc';
+}
+
+// Only draw wards that have results (hides uncontested seats, etc.).
+// 'match' looks codes up in a hash table; an 'in' list was scanned ward by
+// ward for every feature in every tile, which caused much of the zoom lag.
+const HIDE_ALL = ['literal', false];
+function wardFilter(DATA) {
+  const codes = Object.keys(DATA);
+  return codes.length ? ['match', ['get', 'ward_code'], codes, true, false] : HIDE_ALL;
+}
+
+// Results opacity with the hover highlight folded in, so there is one fill
+// layer rather than two (66%; 33% when pinned; hover as the old 25% overlay)
+function wardOpacity(base) {
+  const b = base == null ? 0.66 : base;
+  return ['case',
+    ['boolean', ['feature-state', 'pinned'], false], 0.33,
+    ['boolean', ['feature-state', 'hover'], false], Math.round((b + 0.25 * (1 - b)) * 100) / 100,
+    b];
+}
+
+// The pinned outline only ever draws one ward, so filter the layer to it
+function pinFilter(code) { return code ? ['==', ['get', 'ward_code'], code] : HIDE_ALL; }
+
+// The map is created straight away with the base map; wards stay hidden
+// until the results arrive, then initMap's onData() switches them on.
+function buildMapStyle() {
+  const colorMatch = '#cccccc';
 
   // House base map (glasgow46239.github.io/style/be-basemap.js) beneath the ward layers, labels on top
-  // Only draw wards that have results (hides uncontested seats, etc.)
-  const hasData = ['in', ['get', 'ward_code'], ['literal', Object.keys(DATA)]];
-  const ward = { source: 'wards', 'source-layer': 'wards', filter: hasData };
+  const ward = { source: 'wards', 'source-layer': 'wards', filter: HIDE_ALL };
 
   return BE.basemap.style({
     sources: { wards: {
@@ -1724,15 +1765,9 @@ function buildMapStyle(DATA) {
     layers: [
       // Ward fills: 66%, dropping to 33% on the clicked ward so its streets show through
       { id: 'wards-fill', type: 'fill', ...ward,
-        paint: { 'fill-color': colorMatch, 'fill-opacity': BE.basemap.fillOpacity() } },
+        paint: { 'fill-color': colorMatch, 'fill-opacity': wardOpacity() } },
       { id: 'wards-line', type: 'line', ...ward, paint: BE.basemap.boundary() },
-      // Hover highlight
-      { id: 'wards-hover', type: 'fill', ...ward,
-        paint: {
-          'fill-color': colorMatch,
-          'fill-opacity': ['case', ['boolean', ['feature-state','hover'], false], 0.25, 0],
-        } },
-      { id: 'wards-pinned', type: 'line', ...ward, paint: BE.basemap.pinnedLine() },
+      { id: 'wards-pinned', type: 'line', ...ward, paint: BE.basemap.pinnedLine() }, // filtered to the pinned ward
     ],
   });
 }
@@ -1743,7 +1778,11 @@ function buildMapStyle(DATA) {
 // [w, s, e, n] → [[w, s], [e, n]] for fitBounds
 function toLngLatBounds(b) { return b ? [[b[0], b[1]], [b[2], b[3]]] : null; }
 
-function initMap(wardBounds, DATA, HISTORY) {
+// England and Wales, for the first view while results load
+const EW_BOUNDS = [[-5.8, 49.9], [1.8, 55.85]];
+
+function initMap(DATA, HISTORY) {
+  let wardBounds = {}; // filled by onData()
   const container = document.getElementById('map-container');
   const sidePanel = document.getElementById('side-panel');
   const drawer = document.getElementById('drawer');
@@ -1763,6 +1802,7 @@ function initMap(wardBounds, DATA, HISTORY) {
     }
     pinnedId = null;
     pinnedCode = null;
+    if (window._electionMap && window._electionMap.getLayer('wards-pinned')) window._electionMap.setFilter('wards-pinned', pinFilter(null));
     sidePanel.classList.remove('bm-pinned');
   }
 
@@ -1781,6 +1821,7 @@ function initMap(wardBounds, DATA, HISTORY) {
     if (hoveredId !== null) { map.setFeatureState({ source: 'wards', sourceLayer: 'wards', id: hoveredId }, { hover: false }); hoveredId = null; }
     pinnedId = fid; pinnedCode = code;
     map.setFeatureState({ source: 'wards', sourceLayer: 'wards', id: fid }, { pinned: true });
+    map.setFilter('wards-pinned', pinFilter(code));
     const d = DATA[code];
     if (isWide && d) sidePanel.classList.add('bm-pinned');
   }
@@ -1824,13 +1865,14 @@ function initMap(wardBounds, DATA, HISTORY) {
 
   window._electionMap = new maplibregl.Map({
     container: 'map',
-    style: buildMapStyle(DATA),
-    center: MAP_CENTER,
-    zoom: MAP_ZOOM,
+    style: buildMapStyle(),
+    bounds: EW_BOUNDS,
+    fitBoundsOptions: { padding: 20 },
     attributionControl: false,
   });
 
   const map = window._electionMap;
+  const mapLoaded = new Promise((resolve) => map.once('load', resolve));
   map.addControl(
     new maplibregl.NavigationControl({ showCompass: false }),
     'top-left',
@@ -1842,18 +1884,6 @@ function initMap(wardBounds, DATA, HISTORY) {
   map.on('error', (e) => console.warn('MapLibre:', e.error?.message || e));
 
   map.on('load', () => {
-    // Fit to the combined extent of every ward with results
-    const all = Object.values(wardBounds);
-    if (all.length) {
-      map.fitBounds(
-        [
-          [Math.min(...all.map((b) => b[0])), Math.min(...all.map((b) => b[1]))],
-          [Math.max(...all.map((b) => b[2])), Math.max(...all.map((b) => b[3]))],
-        ],
-        { padding: 20, duration: 0 },
-      );
-    }
-
     // HOVER (desktop): highlight only. Results open on click and stay until × / Escape,
     // so panning across the map never flicks the card.
     map.on('mousemove', 'wards-fill', (e) => {
@@ -1909,24 +1939,18 @@ function initMap(wardBounds, DATA, HISTORY) {
           { source: 'wards', sourceLayer: 'wards', id: pinnedId },
           { pinned: true },
         );
+        map.setFilter('wards-pinned', pinFilter(code));
         showSidePanel(code, DATA, HISTORY);
         sidePanel.classList.add('bm-pinned');
       } else {
         if (pinnedId !== null) map.setFeatureState({ source: 'wards', sourceLayer: 'wards', id: pinnedId }, { pinned: false });
         pinnedId = fid; pinnedCode = code;
         map.setFeatureState({ source: 'wards', sourceLayer: 'wards', id: pinnedId }, { pinned: true });
+        map.setFilter('wards-pinned', pinFilter(code));
         showDrawer(code, DATA, HISTORY);
       }
     });
   });
-
-  // Wire up search once map is available
-  // isWideFn returns current isWide so search can pick panel vs drawer
-  initSearch(DATA, wardBounds, map, () => isWide,
-    (code, data) => showSidePanel(code, data, HISTORY),
-    (code, data) => showDrawer(code, data, HISTORY)
-  );
-  initChoropleth(map, DATA);
 
   // Responsive observer — container width, not viewport
   const ro = new ResizeObserver((entries) => {
@@ -1935,6 +1959,39 @@ function initMap(wardBounds, DATA, HISTORY) {
     if (nowWide !== isWide) applyLayout(nowWide);
   });
   ro.observe(container);
+
+  // Called by bootstrap() once the results (and ward bounds) have arrived:
+  // switch the wards on, colour them, then wire up search and the choropleth.
+  async function onData(bounds) {
+    wardBounds = bounds;
+    await mapLoaded;
+
+    const filter = wardFilter(DATA);
+    ['wards-fill', 'wards-line'].forEach((id) => map.setFilter(id, filter));
+    const colours = winnerColourExpr(DATA);
+    map.setPaintProperty('wards-fill', 'fill-color', colours);
+
+    // Fit to the combined extent of every ward with results
+    const all = Object.values(wardBounds);
+    if (all.length) {
+      map.fitBounds(
+        [
+          [Math.min(...all.map((b) => b[0])), Math.min(...all.map((b) => b[1]))],
+          [Math.max(...all.map((b) => b[2])), Math.max(...all.map((b) => b[3]))],
+        ],
+        { padding: 20, duration: 0 },
+      );
+    }
+
+    // isWideFn returns current isWide so search can pick panel vs drawer
+    initSearch(DATA, wardBounds, map, () => isWide,
+      (code, data) => showSidePanel(code, data, HISTORY),
+      (code, data) => showDrawer(code, data, HISTORY)
+    );
+    initChoropleth(map, DATA);
+  }
+
+  return { onData };
 }
 
 
@@ -2002,16 +2059,13 @@ function initChoropleth(map, DATA) {
 
     if (mode === 'winner') {
       map.setPaintProperty('wards-fill', 'fill-color', getWinnerExpression());
-      map.setPaintProperty('wards-fill', 'fill-opacity', BE.basemap.fillOpacity());
-      // restore hover layer to winner colours too
-      map.setPaintProperty('wards-hover', 'fill-color', getWinnerExpression());
+      map.setPaintProperty('wards-fill', 'fill-opacity', wardOpacity());
       partyWrap.classList.remove('visible');
       legend.classList.remove('visible');
     } else {
       const expr    = buildChoroplethExpression(DATA, party);
       map.setPaintProperty('wards-fill',  'fill-color',   expr);
-      map.setPaintProperty('wards-fill',  'fill-opacity', BE.basemap.fillOpacity(0.85));
-      map.setPaintProperty('wards-hover', 'fill-color',   expr);
+      map.setPaintProperty('wards-fill',  'fill-opacity', wardOpacity(0.85));
       partyWrap.classList.add('visible');
 
       // Update legend
@@ -2167,47 +2221,52 @@ function buildDataFromHistory(rows) {
 }
 
 async function bootstrap() {
-  let DATA, wardBounds = {}, HISTORY = null;
+  // Filled in place once the sheets arrive, so the map's handlers see the data
+  const DATA = {}, HISTORY = {};
+  let wardBounds = {};
 
   // Let MapLibre read the single-file PMTiles archive
   maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
 
-  try {
-    const res = await fetch(BOUNDS_URL);
-    wardBounds = await res.json();
-  } catch (err) {
-    console.error('Ward bounds load failed:', err);
-  }
+  // Draw the map (base map and controls) straight away, before any data
+  const ui = initMap(DATA, HISTORY);
+  const loadingNote = document.getElementById('map-loading');
+
+  // Fetch everything at once: the wait is the slowest request, not the sum
+  const getText = (url) => url ? fetch(url).then((r) => r.text()) : Promise.resolve(null);
+  const [boundsRes, resultsRes, demoRes] = await Promise.allSettled([
+    fetch(BOUNDS_URL).then((r) => r.json()),
+    getText(HISTORY_CSV_URL || SHEET_CSV_URL),
+    getText(typeof DEMO_CSV_URL !== 'undefined' ? DEMO_CSV_URL : null),
+  ]);
+
+  if (boundsRes.status === 'fulfilled') wardBounds = boundsRes.value;
+  else console.error('Ward bounds load failed:', boundsRes.reason);
 
   // History CSV is the single source of truth for DATA and HISTORY
-  if (HISTORY_CSV_URL) {
+  if (resultsRes.status === 'fulfilled' && resultsRes.value) {
     try {
-      const res  = await fetch(HISTORY_CSV_URL);
-      const text = await res.text();
-      const histRows = parseCSV(text);
-      console.log('[History] Rows:', histRows.length, '| Year values:', [...new Set(histRows.map(r => (r.year||r.yr||'').toString().trim()))].join(', '));
-      HISTORY = buildHistoryFromCSV(histRows);
-      DATA    = buildDataFromHistory(histRows);
-      console.log('[History] Wards built:', Object.keys(DATA).length);
+      const rows = parseCSV(resultsRes.value);
+      if (HISTORY_CSV_URL) {
+        console.log('[History] Rows:', rows.length, '| Year values:', [...new Set(rows.map(r => (r.year||r.yr||'').toString().trim()))].join(', '));
+        Object.assign(HISTORY, buildHistoryFromCSV(rows));
+        Object.assign(DATA, buildDataFromHistory(rows));
+        console.log('[History] Wards built:', Object.keys(DATA).length);
+      } else {
+        Object.assign(DATA, buildDataFromCSV(rows));
+      }
     } catch (err) {
-      console.error('[History] FAILED:', err.message || err);
+      console.error('[Results] FAILED:', err.message || err);
     }
-  } else if (SHEET_CSV_URL) {
-    try {
-      const res = await fetch(SHEET_CSV_URL);
-      const text = await res.text();
-      DATA = buildDataFromCSV(parseCSV(text));
-    } catch (err) {
-      console.warn('CSV load failed:', err);
-    }
+  } else if (resultsRes.status === 'rejected') {
+    console.error('[Results] FAILED:', resultsRes.reason?.message || resultsRes.reason);
   }
 
   // Load demographics
-  if (typeof DEMO_CSV_URL !== 'undefined' && DEMO_CSV_URL) {
+  if (demoRes.status === 'rejected') console.warn('[Demo] Failed:', demoRes.reason);
+  if (demoRes.status === 'fulfilled' && demoRes.value) {
     try {
-      const res  = await fetch(DEMO_CSV_URL);
-      const text = await res.text();
-      const rows = parseCSV(text);
+      const rows = parseCSV(demoRes.value);
       DEMOGRAPHICS = {};
       rows.forEach(row => {
         const code = (row.ward_code || '').trim();
@@ -2225,14 +2284,17 @@ async function bootstrap() {
     }
   }
 
-  if (!DATA) DATA = buildDemoData();
+  const gotResults = Object.keys(DATA).length > 0;
+  if (!gotResults) Object.assign(DATA, buildDemoData());
 
   // Keep only wards with results (the map layers apply the same filter)
   wardBounds = Object.fromEntries(
     Object.entries(wardBounds).filter(([code]) => DATA[code]),
   );
 
-  initMap(wardBounds, DATA, HISTORY);
+  await ui.onData(wardBounds);
+  if (gotResults) loadingNote.remove();
+  else loadingNote.textContent = 'Results could not be loaded. Please refresh the page.';
 }
 
 bootstrap();
